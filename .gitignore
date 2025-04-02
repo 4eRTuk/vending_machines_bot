@@ -1,0 +1,4 @@
+__pycache__/
+nppBackup/
+.env
+*.db

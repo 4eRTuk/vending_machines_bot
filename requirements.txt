@@ -1,0 +1,6 @@
+aiogram
+openpyxl
+pandas
+python-dotenv
+sqlalchemy
+sqlite-web
