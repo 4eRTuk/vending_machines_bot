@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import create_engine, MetaData, Table
+from sqlalchemy import create_engine, MetaData, Table, and_
 from sqlalchemy.orm import sessionmaker, joinedload
 
 from models import Base, Request, Machine, Employee, Photo, Comment
@@ -89,11 +89,17 @@ def get_active_request(employee):
     with Session() as session:
         if employee.group == 'engineer':
             return session.query(Request).filter(
-                Request.engineer_id == employee.id
+                and_(
+                    Request.engineer_id == employee.id,
+                    Request.engineer_status == 'in_work'
+                )
             ).first()
         if employee.group == 'accountant':
             return session.query(Request).filter(
-                Request.accountant_id == employee.id
+                and_(
+                    Request.accountant_id == employee.id,
+                    Request.accountant_status == 'in_work'
+                )
             ).first()
         else:
             return None
@@ -125,6 +131,13 @@ def get_comments(request_id):
         return session.query(Comment).filter(Comment.request_id == request_id).order_by(Comment.id).all()
 
 
+def localize_tz_column(df, name):
+    df[name] = pd.to_datetime(df[name])  # Преобразуем в формат datetime
+    df[name] = df[name].dt.tz_localize('UTC')  # Указываем исходный часовой пояс (например, UTC)
+    df[name] = df[name].dt.tz_convert('Europe/Moscow')  # Сдвигаем в нужный часовой пояс
+    df[name] = df[name].dt.tz_localize(None)  # Убираем информацию о часовом поясе для совместимости с Excel
+
+
 def export_to_excel():
     with Session() as session:
         # Загружаем метаданные и выбираем таблицу
@@ -133,23 +146,17 @@ def export_to_excel():
         table = metadata.tables['requests']  # Замените на имя вашей таблицы
 
         # Указываем конкретные столбцы для выборки
-        columns_to_select = [table.c.id, table.c.created_at, table.c.full_name, table.c.phone, table.c.machine_number, table.c.engineer_closed_by, table.c.engineer_status, table.c.engineer_closed_at, table.c.accountant_status, table.c.accountant_closed_at, table.c.accountant_closed_by]
+        columns_to_select = [table.c.id, table.c.created_at, table.c.full_name, table.c.phone, table.c.machine_number, table.c.engineer_closed_by, table.c.engineer_status, table.c.engineer_closed_at, table.c.accountant_closed_by, table.c.accountant_status, table.c.accountant_closed_at]
         
         # Выполняем запрос на выбор данных
         query = session.query(*columns_to_select)
         result = query.all()
 
-        df = pd.DataFrame(result, columns=['Номер заявки', 'Создана', 'Имя клиента', 'Телефон', 'Номер автомата', 'Инженер', 'Статус от инженера', 'Когда закрыто', 'Диспетчер', 'Статус от диспетчера', 'Когда закрыто'])
+        df = pd.DataFrame(result, columns=['Номер заявки', 'Создана', 'Имя клиента', 'Телефон', 'Номер автомата', 'Инженер', 'Статус от инженера', 'Когда закрыто инженером', 'Диспетчер', 'Статус от диспетчера', 'Когда закрыто диспетчером'])
         
-        df['created_at'] = pd.to_datetime(df['created_at'])  # Преобразуем в формат datetime
-        df['created_at'] = df['created_at'].dt.tz_localize('UTC')  # Указываем исходный часовой пояс (например, UTC)
-        df['created_at'] = df['created_at'].dt.tz_convert('Europe/Moscow')  # Сдвигаем в нужный часовой пояс
-        df['engineer_closed_at'] = pd.to_datetime(df['engineer_closed_at'])
-        df['engineer_closed_at'] = df['engineer_closed_at'].dt.tz_localize('UTC')
-        df['engineer_closed_at'] = df['engineer_closed_at'].dt.tz_convert('Europe/Moscow')
-        df['accountant_closed_at'] = pd.to_datetime(df['accountant_closed_at'])
-        df['accountant_closed_at'] = df['accountant_closed_at'].dt.tz_localize('UTC')
-        df['accountant_closed_at'] = df['accountant_closed_at'].dt.tz_convert('Europe/Moscow')
+        localize_tz_column(df, 'Создана')
+        localize_tz_column(df, 'Когда закрыто инженером')
+        localize_tz_column(df, 'Когда закрыто диспетчером')
 
         # Экспортируем данные в Excel
         random_file_name = f"{int(time.time())}.xlsx"

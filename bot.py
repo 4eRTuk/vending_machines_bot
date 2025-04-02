@@ -5,7 +5,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import ContentType, CallbackQuery, Message, ReplyKeyboardMarkup, InlineKeyboardMarkup, FSInputFile
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from datetime import datetime
-from sqlalchemy import and_
+from sqlalchemy import or_
 from typing import Any, Dict
 
 from config import Config
@@ -342,10 +342,10 @@ async def show_work_menu(message: types.Message, engineer: bool = False, text: s
     ]
     if engineer:
         buttons.append([types.KeyboardButton(text="Добавить фото")])
-    buttons.append(
+    buttons.extend([
         [types.KeyboardButton(text="Закрыть заявку")],
         [types.KeyboardButton(text="Отказаться от заявки")]
-    )
+    ])
     menu = ReplyKeyboardMarkup(
         keyboard=buttons,
         resize_keyboard=True
@@ -395,10 +395,10 @@ async def show_main_menu(message: types.Message, manager: bool, text: str = None
         [types.KeyboardButton(text="Закрытые заявки")]
     ]
     if manager:
-        buttons.append(
+        buttons.extend([
             [types.KeyboardButton(text="Скачать отчет в Excel")],
             [types.KeyboardButton(text="Создать заявку")]
-        )
+        ])
 
     menu = ReplyKeyboardMarkup(
         keyboard=buttons,
@@ -444,7 +444,7 @@ async def show_open_requests(message: Message, **kwargs):
             ).all()
         elif employee.group in ['manager']:
             open_requests = session.query(Request).filter(
-                and_(
+                or_(
                     Request.accountant_status != 'closed',
                     Request.engineer_status != 'closed'
                 )
@@ -508,7 +508,7 @@ async def show_closed_requests(message: Message, **kwargs):
 async def reopen_request_handler(callback: types.CallbackQuery, **kwargs):
     await callback.answer()
     employee = kwargs.get('employee')
-    if not employee or employee.group not in ['engineer', 'accountant', 'manager']:
+    if not employee or employee.group not in ['engineer', 'accountant']:
         await callback.answer("Доступ запрещен!")
         return
     
@@ -536,7 +536,7 @@ async def reopen_request_handler(callback: types.CallbackQuery, **kwargs):
         )
         
         # Возвращаем основное меню
-        await show_work_menu(callback.message, employee.group == 'manager')
+        await show_work_menu(callback.message, employee.group == 'engineer')
     else:
         await callback.message.answer("Ошибка при переоткрытии заявки!")
 
@@ -574,7 +574,7 @@ async def process_photo(message: Message, state: FSMContext):
 
 
 @dp.message(EmployeeStates.waiting_for_photo, F.text == "Готово")
-async def finish_adding_photos(message: Message, state: FSMContext):
+async def finish_adding_photos(message: Message, state: FSMContext, **kwargs):
     employee = kwargs.get('employee')
     if not employee:
         await callback.answer("Доступ запрещен!")
@@ -607,7 +607,7 @@ async def add_comment_handler(message: Message, state: FSMContext, **kwargs):
 
 # Обработчик комментария
 @dp.message(EmployeeStates.waiting_for_comment)
-async def process_comment(message: Message, state: FSMContext):
+async def process_comment(message: Message, state: FSMContext, **kwargs):
     employee = kwargs.get('employee')
     if not employee:
         await callback.answer("Доступ запрещен!")
@@ -647,13 +647,15 @@ async def close_request_handler(message: Message, **kwargs):
     if not employee or employee.group not in ['engineer', 'accountant']:
         await message.answer("Доступ запрещен!")
         return
-    if not get_active_request(employee):
+    
+    request = get_active_request(employee)
+    if not request:
         await message.answer("У вас нет активных заявок!")
         return
         
     # Отправляем сообщение с подтверждением
     await message.answer(
-        "Подтвердите закрытие заявки",
+        f"Подтвердите закрытие заявки №{request.id}\n\nНомер автомата: {request.machine_number}\nАдрес: {request.machine.address}",
         reply_markup=get_confirmation_keyboard()
     )
 
