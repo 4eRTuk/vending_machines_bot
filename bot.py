@@ -66,7 +66,7 @@ async def show_client_menu(message: types.Message, text: str = None):
 # Обработчик кнопки "Создать заявку"
 @dp.message(lambda message: message.text == "Создать заявку")
 async def start_application(message: types.Message, state: FSMContext):
-    await message.answer("Введите номер автомата/аппарата:\n\nЧетырехзначный номер на прямоугольной шильде.\nПример: 1200", reply_markup=cancel_keyboard())
+    await message.answer("Введите номер автомата/аппарата:\n\nЧетырехзначный номер на прямоугольной шильде.\nПример: 0078", reply_markup=cancel_keyboard())
     await state.set_state(ClientStates.waiting_for_machine)
 
 
@@ -130,7 +130,7 @@ async def process_photo(message: Message, state: FSMContext):
 @dp.message(ClientStates.waiting_for_full_name)
 async def process_full_name(message: types.Message, state: FSMContext):
     await state.update_data(full_name=message.text.strip())
-    await message.answer("Введите Ваш номер телефона:", reply_markup=cancel_keyboard())
+    await message.answer("Введите Ваш номер телефона:\n\nНачинайте с 8 или +7, пожалуйста.", reply_markup=cancel_keyboard())
     await state.set_state(ClientStates.waiting_for_phone)
 
 
@@ -217,19 +217,53 @@ def format_datetime(date_time):
     return target_datetime.strftime('%d month %Y, %H:%M').lower().replace('month', month)
 
 
-async def send_notification(bot: Bot, request: Request, employees: list, user_id: int = None):
+def get_base_info(request):
     created_at = format_datetime(request.created_at)
-    
-    message_text = (
+    return (
         f"Заявка №{request.id}\n\n"
         f"Дата и время: {created_at}\n"
         f"ФИО клиента: {request.full_name}\n"
         f"Номер телефона: <a href='tel:{request.phone}'>{request.phone}</a>\n"
+        f"Фото: {'Прикреплено' if request.photo else 'Отсутствует'}\n"
         f"Номер автомата/аппарата: {request.machine_number}\n"
         f"Модель: {request.machine.model if request.machine else ''}\n"
         f"Адрес: {request.machine.address if request.machine else ''}\n"
-        f"Наименование установки: {request.machine.name if request.machine else ''}"
+        f"Наименование установки: {request.machine.name if request.machine else ''}\n"
     )
+
+
+def append_info(message_text, request):
+    if request.machine.priority != None:
+        message_text += f"Приоритет: {request.machine.priority}\n"
+    if request.machine.pump != None:
+        message_text += f"Помпа: {'есть' if request.machine.pump else 'нет'}\n"
+    if request.machine.saturday != None or request.machine.sunday != None:
+        message_text += f"Выходные сб/вс: {'да' if request.machine.saturday else 'нет'}/{'да' if request.machine.sunday else 'нет'}\n"
+    if request.machine.ip != None:
+        message_text += f"ИП: {request.machine.ip}\n"
+    return message_text
+
+
+def append_manager_info(report_text, request, photos_count):
+    comments = get_comments(request.id)
+    photo_text = f"Фото от сотрудника: {photos_count} шт."
+    comments_engineers = "Комментарии:\n" + "\n".join([f"{c.text}" for c in comments if c.added_by == 'engineer']) if comments else "Комментарии отсутствуют"
+    comments_accountants = "Комментарии:\n" + "\n".join([f"{c.text}" for c in comments if c.added_by == 'accountant']) if comments else "Комментарии отсутствуют"
+    report_text += (
+        f"Инженер закрыл: {request.engineer_closed_by or 'Не закрыта'}\n"
+        f"Когда закрыл инженер: {format_datetime(request.engineer_closed_at) if request.engineer_closed_at else 'Не закрыта'}\n"
+        f"{comments_engineers}\n"
+        f"{photo_text}\n\n"
+        f"Диспетчер закрыл: {request.accountant_closed_by or 'Не закрыта'}\n"
+        f"Когда закрыл диспетчер: {format_datetime(request.accountant_closed_at) if request.accountant_closed_at else 'Не закрыта'}\n"
+        f"{comments_accountants}"
+    )
+    return report_text
+
+
+async def send_notification(bot: Bot, request: Request, employees: list, user_id: int = None):
+    message_text = get_base_info(request)
+    message_text = append_info(message_text, request)
     
     for employee in employees:
         appendix = ""
@@ -705,35 +739,15 @@ async def view_report_handler(callback: types.CallbackQuery, **kwargs):
 
     request_id = int(callback.data.split(":")[1])
     request = get_request_by_id(request_id)
-    photos = get_photos(request_id)
-    comments = get_comments(request_id)
     
     if not request:
         await callback.message.answer("Заявка не найдена")
         return
 
-    photo_text = f"Фото от сотрудника: {len(photos)} шт."
-    comments_engineers = "Комментарии:\n" + "\n".join([f"{c.text}" for c in comments if c.added_by == 'engineer']) if comments else "Комментарии отсутствуют"
-    comments_accountants = "Комментарии:\n" + "\n".join([f"{c.text}" for c in comments if c.added_by == 'accountant']) if comments else "Комментарии отсутствуют"
-    
-    report_text = (
-        f"Заявка №{request.id}\n\n"
-        f"Дата и время: {format_datetime(request.created_at)}\n"
-        f"ФИО клиента: {request.full_name}\n"
-        f"Номер телефона: <a href='tel:{request.phone}'>{request.phone}</a>\n"
-        f"Фото: {'Прикреплено' if request.photo else 'Отсутствует'}\n"
-        f"Номер автомата/аппарата: {request.machine_number}\n"
-        f"Модель: {request.machine.model if request.machine else 'Не указано'}\n"
-        f"Адрес: {request.machine.address if request.machine else 'Не указано'}\n"
-        f"Наименование установки: {request.machine.name if request.machine else 'Не указано'}\n\n"
-        f"Инженер закрыл: {request.engineer_closed_by or 'Не закрыта'}\n"
-        f"Когда закрыл инженер: {format_datetime(request.engineer_closed_at) if request.engineer_closed_at else 'Не закрыта'}\n"
-        f"{comments_engineers}\n"
-        f"{photo_text}\n\n"
-        f"Диспетчер закрыл: {request.accountant_closed_by or 'Не закрыта'}\n"
-        f"Когда закрыл диспетчер: {format_datetime(request.accountant_closed_at) if request.accountant_closed_at else 'Не закрыта'}\n"
-        f"{comments_accountants}\n"
-    )
+    photos = get_photos(request_id)
+    report_text = get_base_info(request)
+    report_text = append_info(report_text, request)
+    report_text = append_manager_info(report_text, request, len(photos))
 
     if request.photo:
         await callback.message.answer_photo(
