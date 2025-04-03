@@ -51,8 +51,8 @@ async def start_command(message: types.Message, state: FSMContext, **kwargs):
 # Клавиатура с кнопкой "Создать заявку"
 async def show_client_menu(message: types.Message, text: str = None):
     text = (
-        "Вас приветствует система обратной связи по работе автоматов.\n"
-        "Пожалуйста, заранее найдите номер автомата рядом с купюроприемником."
+        "Вас приветствует система обратной связи по работе автоматов и аппаратов.\n"
+        "Пожалуйста, заранее найдите номер автомата/аппарата рядом с купюроприемником."
     ) if not text else text
     menu = ReplyKeyboardMarkup(
         keyboard=[
@@ -66,7 +66,7 @@ async def show_client_menu(message: types.Message, text: str = None):
 # Обработчик кнопки "Создать заявку"
 @dp.message(lambda message: message.text == "Создать заявку")
 async def start_application(message: types.Message, state: FSMContext):
-    await message.answer("Введите номер автомата:\n\nЧетырехзначный номер на прямоугольной шильде.\nПример: 2801", reply_markup=cancel_keyboard())
+    await message.answer("Введите номер автомата/аппарата:\n\nЧетырехзначный номер на прямоугольной шильде.\nПример: 1200", reply_markup=cancel_keyboard())
     await state.set_state(ClientStates.waiting_for_machine)
 
 
@@ -91,7 +91,7 @@ async def process_machine_number(message: types.Message, state: FSMContext):
     
     if not machine_exists(machine_number):
         await message.answer(
-            f"🚨 Автомат с номером {machine_number} не найден.\n"
+            f"🚨 Автомат/аппарат с номером {machine_number} не найден.\n"
             "Проверьте номер — он находится над купюроприемником — "
             "и введите еще раз:",
             reply_markup=cancel_keyboard()
@@ -113,7 +113,7 @@ def skip_keyboard():
 # Обработчик пропуска на этапе фото
 @dp.message(lambda message: message.text == "Пропустить")
 async def skip_photo(message: types.Message, state: FSMContext):
-    await message.answer("Введите Ваше имя и отчество:", reply_markup=cancel_keyboard())
+    await message.answer("Введите Ваше имя:", reply_markup=cancel_keyboard())
     await state.set_state(ClientStates.waiting_for_full_name)
 
 
@@ -122,7 +122,7 @@ async def process_photo(message: Message, state: FSMContext):
     photo_id = message.photo[-1].file_id if message.photo else None
     await state.update_data(photo=photo_id)
     
-    await message.answer("Введите Ваше имя и отчество:", reply_markup=cancel_keyboard())
+    await message.answer("Введите Ваше имя:", reply_markup=cancel_keyboard())
     await state.set_state(ClientStates.waiting_for_full_name)
 
 
@@ -170,9 +170,9 @@ async def process_phone(message: types.Message, state: FSMContext):
     
     confirmation_text = (
         "Подтвердите корректность данных:\n\n"
-        f"Ваше имя и отчество: {user_data['full_name']}\n"
+        f"Ваше имя: {user_data['full_name']}\n"
         f"Ваш телефон: {user_data['phone']}\n"
-        f"Номер автомата: {user_data['machine']}"
+        f"Номер автомата/аппарата: {user_data['machine']}"
     )
     
     await message.answer(confirmation_text, reply_markup=builder.as_markup())
@@ -225,7 +225,7 @@ async def send_notification(bot: Bot, request: Request, employees: list, user_id
         f"Дата и время: {created_at}\n"
         f"ФИО клиента: {request.full_name}\n"
         f"Номер телефона: <a href='tel:{request.phone}'>{request.phone}</a>\n"
-        f"Номер автомата: {request.machine_number}\n"
+        f"Номер автомата/аппарата: {request.machine_number}\n"
         f"Модель: {request.machine.model if request.machine else ''}\n"
         f"Адрес: {request.machine.address if request.machine else ''}\n"
         f"Наименование установки: {request.machine.name if request.machine else ''}"
@@ -324,12 +324,6 @@ async def take_request_handler(callback: types.CallbackQuery, **kwargs):
         data['accountant_status'] = 'in_work'
         
     if update_request(request_id, **data):
-        # Обновляем сообщение
-        await callback.message.edit_text(
-            f"{callback.message.text}\n\n✅ Заявка взята в работу: {employee.full_name}",
-            reply_markup=None
-        )
-        
         # Обновляем меню сотрудника
         await show_work_menu(callback.message, employee.group == 'engineer', text=f"Работа с заявкой №{request.id}:")
     else:
@@ -532,15 +526,18 @@ async def reopen_request_handler(callback: types.CallbackQuery, **kwargs):
         return
     
     if update_request(request.id, **data):
-        await callback.message.edit_text(
-            f"{callback.message.text}\n\n✅ Заявка переоткрыта",
-            reply_markup=None
-        )
-        
         # Возвращаем основное меню
-        await show_work_menu(callback.message, employee.group == 'engineer')
+        await show_work_menu(callback.message, employee.group == 'engineer', text=f"Заявка №{request.id} переоткрыта:")
     else:
         await callback.message.answer("Ошибка при переоткрытии заявки!")
+
+
+# Функция для создания клавиатуры Готово
+def get_done_keyboard():
+    return ReplyKeyboardMarkup(
+        keyboard=[[types.KeyboardButton(text="Готово")]],
+        resize_keyboard=True
+    )
 
 
 # Обработчик добавления фото
@@ -556,10 +553,7 @@ async def add_photo_handler(message: Message, state: FSMContext, **kwargs):
         return
     
     await state.update_data(request_id=request.id)
-    await message.answer("Отправьте фото:", reply_markup=ReplyKeyboardMarkup(
-                              keyboard=[[types.KeyboardButton(text="Готово")]],
-                              resize_keyboard=True
-                          ))
+    await message.answer("Отправьте фото:", reply_markup=get_done_keyboard())
     await state.set_state(EmployeeStates.waiting_for_photo)
 
 
@@ -572,7 +566,7 @@ async def process_photo(message: Message, state: FSMContext):
     
     add_photo(request_id, photo_id)
     
-    await message.answer("Фото успешно добавлено! Отправьте еще или нажмите 'Готово'.")
+    await message.answer("Фото успешно добавлено! Отправьте еще или нажмите 'Готово'.", reply_markup=get_done_keyboard())
 
 
 @dp.message(EmployeeStates.waiting_for_photo, F.text == "Готово")
@@ -600,10 +594,7 @@ async def add_comment_handler(message: Message, state: FSMContext, **kwargs):
         return
     
     await state.update_data(request_id=request.id, role=employee.group)
-    await message.answer("Введите ваш комментарий:", reply_markup=ReplyKeyboardMarkup(
-                              keyboard=[[types.KeyboardButton(text="Готово")]],
-                              resize_keyboard=True
-                          ))
+    await message.answer("Введите ваш комментарий:", reply_markup=get_done_keyboard())
     await state.set_state(EmployeeStates.waiting_for_comment)
 
 
@@ -627,7 +618,7 @@ async def process_comment(message: Message, state: FSMContext, **kwargs):
     
     add_comment(request_id, message.text, role)
     
-    await message.answer("Комментарий успешно добавлен! Введите еще или нажмите 'Готово'.")
+    await message.answer("Комментарий успешно добавлен! Введите еще или нажмите 'Готово'.", reply_markup=get_done_keyboard())
 
 
 # Функция для создания клавиатуры подтверждения
@@ -657,7 +648,7 @@ async def close_request_handler(message: Message, **kwargs):
         
     # Отправляем сообщение с подтверждением
     await message.answer(
-        f"Подтвердите закрытие заявки №{request.id}\n\nНомер автомата: {request.machine_number}\nАдрес: {request.machine.address}",
+        f"Подтвердите закрытие заявки №{request.id}\n\nНомер автомата/аппарата: {request.machine_number}\nАдрес: {request.machine.address}",
         reply_markup=get_confirmation_keyboard()
     )
 
@@ -731,7 +722,7 @@ async def view_report_handler(callback: types.CallbackQuery, **kwargs):
         f"ФИО клиента: {request.full_name}\n"
         f"Номер телефона: <a href='tel:{request.phone}'>{request.phone}</a>\n"
         f"Фото: {'Прикреплено' if request.photo else 'Отсутствует'}\n"
-        f"Номер автомата: {request.machine_number}\n"
+        f"Номер автомата/аппарата: {request.machine_number}\n"
         f"Модель: {request.machine.model if request.machine else 'Не указано'}\n"
         f"Адрес: {request.machine.address if request.machine else 'Не указано'}\n"
         f"Наименование установки: {request.machine.name if request.machine else 'Не указано'}\n\n"
