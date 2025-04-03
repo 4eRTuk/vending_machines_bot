@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import create_engine, MetaData, Table, and_
+from sqlalchemy import create_engine, MetaData, Table
 from sqlalchemy.orm import sessionmaker, joinedload
 
 from models import Base, Request, Machine, Employee, Photo, Comment
@@ -88,18 +88,14 @@ def get_employees_by_groups(groups: list):
 def get_active_request(employee):
     with Session() as session:
         if employee.group == 'engineer':
-            return session.query(Request).filter(
-                and_(
-                    Request.engineer_id == employee.id,
-                    Request.engineer_status == 'in_work'
-                )
+            return session.query(Request).options(joinedload(Request.machine)).filter(
+                Request.engineer_id == employee.id,
+                Request.engineer_status == 'in_work'
             ).first()
         if employee.group == 'accountant':
-            return session.query(Request).filter(
-                and_(
-                    Request.accountant_id == employee.id,
-                    Request.accountant_status == 'in_work'
-                )
+            return session.query(Request).options(joinedload(Request.machine)).filter(
+                Request.accountant_id == employee.id,
+                Request.accountant_status == 'in_work'
             ).first()
         else:
             return None

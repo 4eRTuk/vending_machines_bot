@@ -326,7 +326,7 @@ async def take_request_handler(callback: types.CallbackQuery, **kwargs):
     if update_request(request_id, **data):
         # Обновляем сообщение
         await callback.message.edit_text(
-            f"{callback.message.text}\n\nВзята в работу: {employee.full_name}",
+            f"{callback.message.text}\n\n✅ Заявка взята в работу: {employee.full_name}",
             reply_markup=None
         )
         
@@ -434,15 +434,16 @@ async def show_open_requests(message: Message, **kwargs):
 
     session = get_db_session()
     try:
-        if employee.group in ['engineer']:
+        open_requests = None
+        if employee.group == 'engineer':
             open_requests = session.query(Request).filter(
                 Request.engineer_status == 'open'
             ).all()
-        elif employee.group in ['accountant']:
+        elif employee.group == 'accountant':
             open_requests = session.query(Request).filter(
                 Request.accountant_status == 'open'
             ).all()
-        elif employee.group in ['manager']:
+        elif employee.group == 'manager':
             open_requests = session.query(Request).filter(
                 or_(
                     Request.accountant_status != 'closed',
@@ -465,6 +466,7 @@ async def show_open_requests(message: Message, **kwargs):
         session.close()
 
 
+# Обработчик для списка закрытых заявок
 @dp.message(F.text == "Закрытые заявки")
 async def show_closed_requests(message: Message, **kwargs):
     employee = kwargs.get('employee')
@@ -473,8 +475,8 @@ async def show_closed_requests(message: Message, **kwargs):
         return
 
     session = get_db_session()
-    
     try:
+        closed_requests = None
         if employee.group == 'engineer':
             closed_requests = session.query(Request).filter(
                 Request.engineer_id == employee.id,
@@ -485,7 +487,7 @@ async def show_closed_requests(message: Message, **kwargs):
                 Request.accountant_id == employee.id,
                 Request.accountant_status == 'closed'
             ).all()
-        else:
+        elif employee.group == 'manager':
             closed_requests = session.query(Request).filter(
                 Request.accountant_status == 'closed',
                 Request.engineer_status == 'closed'
