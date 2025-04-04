@@ -34,7 +34,13 @@ def save_to_db(user_data: dict):
                 full_name=user_data['full_name'],
                 phone=user_data['phone'],
                 machine_number=user_data['machine'],
-                photo=user_data.get('photo')
+                photo=user_data.get('photo'),
+                issue_description=user_data.get('issue_description'),
+                payment_method=user_data.get('payment_method'),
+                payment_type=user_data.get('payment_type'),
+                expense_amount=user_data.get('expense_amount'),
+                item_name=user_data.get('item_name'),
+                expense_time=user_data.get('expense_time'),
             )
             
             # Добавляем связь с автоматом
@@ -140,15 +146,62 @@ def export_to_excel():
         metadata = MetaData()
         metadata.reflect(bind=engine)
         table = metadata.tables['requests']  # Замените на имя вашей таблицы
+        related_table = metadata.tables['machines']
 
         # Указываем конкретные столбцы для выборки
-        columns_to_select = [table.c.id, table.c.created_at, table.c.full_name, table.c.phone, table.c.machine_number, table.c.engineer_closed_by, table.c.engineer_status, table.c.engineer_closed_at, table.c.accountant_closed_by, table.c.accountant_status, table.c.accountant_closed_at]
+        columns_to_select = [
+            table.c.id,
+            table.c.created_at,
+            table.c.full_name,
+            table.c.phone,
+            table.c.machine_number,
+            table.c.issue_description,
+            table.c.payment_method,
+            table.c.payment_type,
+            table.c.expense_amount,
+            table.c.item_name,
+            table.c.expense_time,
+            related_table.c.priority,
+            related_table.c.pump,
+            related_table.c.saturday,
+            related_table.c.sunday,
+            related_table.c.ip,
+            table.c.engineer_closed_by,
+            table.c.engineer_status,
+            table.c.engineer_closed_at,
+            table.c.accountant_closed_by,
+            table.c.accountant_status,
+            table.c.accountant_closed_at
+        ]
         
         # Выполняем запрос на выбор данных
-        query = session.query(*columns_to_select)
+        query = session.query(*columns_to_select).join(related_table, table.c.machine_number == related_table.c.number)
         result = query.all()
 
-        df = pd.DataFrame(result, columns=['Номер заявки', 'Создана', 'Имя клиента', 'Телефон', 'Номер автомата', 'Инженер', 'Статус от инженера', 'Когда закрыто инженером', 'Диспетчер', 'Статус от диспетчера', 'Когда закрыто диспетчером'])
+        df = pd.DataFrame(result, columns=[
+            'Номер заявки',
+            'Создана',
+            'Имя клиента',
+            'Телефон',
+            'Номер автомата/аппарата',
+            'Описание неисправности',
+            'Способ оплаты',
+            'Тип оплаты',
+            'Сумма затрат',
+            'Наименование товара',
+            'Время списания средств',
+            'Приоритет',
+            'Помпа',
+            'Суббота',
+            'Воскресенье',
+            'ИП',
+            'Инженер',
+            'Статус от инженера',
+            'Когда закрыто инженером',
+            'Диспетчер',
+            'Статус от диспетчера',
+            'Когда закрыто диспетчером'
+        ])
         
         localize_tz_column(df, 'Создана')
         localize_tz_column(df, 'Когда закрыто инженером')

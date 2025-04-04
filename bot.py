@@ -25,10 +25,16 @@ dp = Dispatcher()
 
 # States для клиента
 class ClientStates(StatesGroup):
-    waiting_for_full_name = State()
-    waiting_for_phone = State()
     waiting_for_machine = State()
     waiting_for_photo = State()
+    waiting_for_issue = State()
+    waiting_for_payment_method = State()
+    waiting_for_payment_type = State()
+    waiting_for_expense_amount = State()
+    waiting_for_item_name = State()
+    waiting_for_expense_time = State()
+    waiting_for_full_name = State()
+    waiting_for_phone = State()
     confirmation = State()
 
 
@@ -113,8 +119,8 @@ def skip_keyboard():
 # Обработчик пропуска на этапе фото
 @dp.message(lambda message: message.text == "Пропустить")
 async def skip_photo(message: types.Message, state: FSMContext):
-    await message.answer("Введите Ваше имя:", reply_markup=cancel_keyboard())
-    await state.set_state(ClientStates.waiting_for_full_name)
+    await message.answer("Введите описание неисправности:", reply_markup=cancel_keyboard())
+    await state.set_state(ClientStates.waiting_for_issue)
 
 
 @dp.message(ClientStates.waiting_for_photo)
@@ -122,6 +128,115 @@ async def process_photo(message: Message, state: FSMContext):
     photo_id = message.photo[-1].file_id if message.photo else None
     await state.update_data(photo=photo_id)
     
+    await message.answer("Введите описание неисправности:", reply_markup=cancel_keyboard())
+    await state.set_state(ClientStates.waiting_for_issue)
+
+
+# Создаем клавиатуру для выбора способа оплаты
+def get_payment_methods():
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [types.KeyboardButton(text="Наличные")],
+            [types.KeyboardButton(text="Безналичные")]
+        ],
+        resize_keyboard=True
+    )
+
+
+@dp.message(ClientStates.waiting_for_issue)
+async def process_issue_description(message: Message, state: FSMContext):
+    await state.update_data(issue_description=message.text)
+    
+    await message.answer("Укажите способ оплаты:", reply_markup=get_payment_methods())
+    await state.set_state(ClientStates.waiting_for_payment_method)
+
+
+# Клавиатура для выбора типа безналичной оплаты
+def get_payment_type():
+    return ReplyKeyboardMarkup(
+            keyboard=[
+                [types.KeyboardButton(text="QR код")],
+                [types.KeyboardButton(text="Карта")]
+            ],
+            resize_keyboard=True
+        )
+
+
+@dp.message(ClientStates.waiting_for_payment_method)
+async def process_payment_method(message: Message, state: FSMContext):
+    payment_method = message.text.lower()
+    if payment_method not in ["безналичные", "наличные"]:
+        await message.answer("Пожалуйста, выберите Наличные или Безналичные:", reply_markup=get_payment_methods())
+        return
+    
+    await state.update_data(payment_method=payment_method)
+
+    if payment_method == "безналичные":
+        await message.answer("Выберите тип оплаты:", reply_markup=get_payment_type())
+        await state.set_state(ClientStates.waiting_for_payment_type)
+    else:
+        # Пропускаем шаг выбора типа оплаты
+        await message.answer("Укажите сумму затрат:", reply_markup=cancel_keyboard())
+        await state.set_state(ClientStates.waiting_for_expense_amount)
+
+
+@dp.message(ClientStates.waiting_for_payment_type)
+async def process_payment_type(message: Message, state: FSMContext):
+    payment_type = message.text.lower()
+    if payment_type not in ["qr код", "карта", "продолжить оформление"]:
+        await message.answer("Пожалуйста, выберите QR код или Карта:", reply_markup=get_payment_type())
+        return
+    
+    if payment_type != "продолжить оформление":
+        await state.update_data(payment_type=payment_type)
+
+    if payment_type == "qr код":
+        # Добавляем кнопку "Продолжить оформление"
+        keyboard = ReplyKeyboardMarkup(
+            keyboard=[
+                [types.KeyboardButton(text="Продолжить оформление")],
+                [types.KeyboardButton(text="Отменить заявку")]
+            ],
+            resize_keyboard=True
+        )
+        await message.answer(
+            "Пожалуйста, проверьте возврат денег в приложении банка через 3 минуты после покупки.",
+            reply_markup=keyboard
+        )
+    else:
+        await message.answer("Укажите сумму затрат:", reply_markup=cancel_keyboard())
+        await state.set_state(ClientStates.waiting_for_expense_amount)
+
+
+@dp.message(F.text == "Продолжить оформление")
+async def continue_after_qr(message: Message, state: FSMContext):
+    await message.answer("Укажите сумму затрат:", reply_markup=cancel_keyboard())
+    await state.set_state(ClientStates.waiting_for_expense_amount)
+
+
+@dp.message(ClientStates.waiting_for_expense_amount)
+async def process_expense_amount(message: Message, state: FSMContext):
+    try:
+        amount = float(message.text)
+        if amount < 0:
+            raise ValueError
+        await state.update_data(expense_amount=amount)
+        await message.answer("Укажите наименование приобретаемого товара:", reply_markup=cancel_keyboard())
+        await state.set_state(ClientStates.waiting_for_item_name)
+    except (ValueError, TypeError):
+        await message.answer("🚨 Пожалуйста, введите корректную сумму (положительное число):", reply_markup=cancel_keyboard())
+
+
+@dp.message(ClientStates.waiting_for_item_name)
+async def process_item_name(message: Message, state: FSMContext):
+    await state.update_data(item_name=message.text)
+    await message.answer("Укажите время списания средств:\n\nМожно посмотреть в приложении банка", reply_markup=cancel_keyboard())
+    await state.set_state(ClientStates.waiting_for_expense_time)
+
+
+@dp.message(ClientStates.waiting_for_expense_time)
+async def process_expense_time(message: Message, state: FSMContext):
+    await state.update_data(expense_time=message.text)
     await message.answer("Введите Ваше имя:", reply_markup=cancel_keyboard())
     await state.set_state(ClientStates.waiting_for_full_name)
 
@@ -150,7 +265,7 @@ async def process_phone(message: types.Message, state: FSMContext):
     
     if not validate_phone_number(phone):
         await message.answer(
-            "Проверьте введенный номер — у телефонного номера неверный формат.",
+            "🚨 Проверьте введенный номер — у телефонного номера неверный формат.",
             reply_markup=cancel_keyboard()
         )
         return
@@ -172,7 +287,12 @@ async def process_phone(message: types.Message, state: FSMContext):
         "Подтвердите корректность данных:\n\n"
         f"Ваше имя: {user_data['full_name']}\n"
         f"Ваш телефон: {user_data['phone']}\n"
-        f"Номер автомата/аппарата: {user_data['machine']}"
+        f"Номер автомата/аппарата: {user_data['machine']}\n"
+        f"Описание неисправности: {user_data['issue_description']}\n"
+        f"Способ оплаты: {user_data['payment_method']} {user_data.get('payment_type') if user_data.get('payment_type') else ''}\n"
+        f"Сумма затрат: {user_data['expense_amount']}\n"
+        f"Наименование товара: {user_data['item_name']}\n"
+        f"Время списания средств: {user_data['expense_time']}"
     )
     
     await message.answer(confirmation_text, reply_markup=builder.as_markup())
@@ -189,7 +309,7 @@ async def confirm_application(callback: types.CallbackQuery, state: FSMContext, 
     request_id = save_to_db(user_data)
     if request_id:
         await callback.message.edit_reply_markup(reply_markup=None)
-        await start_command(callback.message, state, text="Благодарим за заявку! Служба заботы в ближайшее время даст обратную связь по указанному номеру телефона.", employee=employee)
+        await start_command(callback.message, state, text="Благодарим за заявку. Наш инженер в ближайшее время устранит неисправность, а деньги за неполученный продукт будут зачислены на указанный Вами мобильный телефон в течение двух рабочих дней.", employee=employee)
         request = get_request_by_id(request_id)
         employees = get_employees_by_groups(['engineer', 'accountant', 'manager'])
         await send_notification(bot, request, employees, callback.from_user.id)
@@ -229,6 +349,11 @@ def get_base_info(request):
         f"Модель: {request.machine.model if request.machine else ''}\n"
         f"Адрес: {request.machine.address if request.machine else ''}\n"
         f"Наименование установки: {request.machine.name if request.machine else ''}\n"
+        f"Описание неисправности: {request.issue_description}\n"
+        f"Способ оплаты: {request.payment_method} {request.payment_type if request.payment_method == 'безналичные' else ''}\n"
+        f"Сумма затрат: {request.expense_amount}\n"
+        f"Наименование товара: {request.item_name}\n"
+        f"Время списания средств: {request.expense_time}\n"
     )
 
 

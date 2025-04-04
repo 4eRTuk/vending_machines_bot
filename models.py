@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, ForeignKey, Float
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 
@@ -61,6 +61,12 @@ class Request(Base):
     full_name = Column(String, nullable=False)
     phone = Column(String, nullable=False)
     machine_number = Column(String(20), ForeignKey('machines.number'), nullable=False)
+    issue_description = Column(String)
+    payment_method = Column(String)  # наличные, безналичные
+    payment_type = Column(String)  # карта, qr код
+    expense_amount = Column(Float)
+    item_name = Column(String)
+    expense_time = Column(String)
     comments = relationship("Comment", back_populates="request")
     photo = Column(String)  # Это фото из заявки от клиента
     photos = relationship("Photo", back_populates="request")  # Это фото от инженера
