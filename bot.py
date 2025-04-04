@@ -230,7 +230,9 @@ async def process_expense_amount(message: Message, state: FSMContext):
 @dp.message(ClientStates.waiting_for_item_name)
 async def process_item_name(message: Message, state: FSMContext):
     await state.update_data(item_name=message.text)
-    await message.answer("Укажите время списания средств:\n\nМожно посмотреть в приложении банка", reply_markup=cancel_keyboard())
+    user_data = await state.get_data()
+    text = "Укажите время списания средств:\n\nМожно посмотреть в приложении банка" if user_data.get('payment_method') == "безналичные" else "Укажите время покупки:"
+    await message.answer(text, reply_markup=cancel_keyboard())
     await state.set_state(ClientStates.waiting_for_expense_time)
 
 
@@ -292,7 +294,7 @@ async def process_phone(message: types.Message, state: FSMContext):
         f"Способ оплаты: {user_data['payment_method']} {user_data.get('payment_type') if user_data.get('payment_type') else ''}\n"
         f"Сумма затрат: {user_data['expense_amount']}\n"
         f"Наименование товара: {user_data['item_name']}\n"
-        f"Время списания средств: {user_data['expense_time']}"
+        f"Время покупки/списания средств: {user_data['expense_time']}"
     )
     
     await message.answer(confirmation_text, reply_markup=builder.as_markup())
@@ -353,7 +355,7 @@ def get_base_info(request):
         f"Способ оплаты: {request.payment_method} {request.payment_type if request.payment_method == 'безналичные' else ''}\n"
         f"Сумма затрат: {request.expense_amount}\n"
         f"Наименование товара: {request.item_name}\n"
-        f"Время списания средств: {request.expense_time}\n"
+        f"Время покупки/списания средств: {request.expense_time}\n"
     )
 
 
