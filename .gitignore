@@ -1,4 +1,6 @@
 __pycache__/
 nppBackup/
+venv/
 .env
 *.db
+*.log
