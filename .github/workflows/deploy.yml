@@ -20,8 +20,8 @@ jobs:
           echo "nameserver 8.8.8.8" | sudo tee /etc/resolv.conf
           echo "nameserver 8.8.4.4" | sudo tee -a /etc/resolv.conf
 
-      - name: Test server connectivity
-        run: ping -c 4 ${{ secrets.SSH_HOST }}
+      - name: Test connection through proxy
+        run: curl -x http://${{ secrets.PROXY_USER }}:${{ secrets.PROXY_PASSWORD }}@${{ secrets.PROXY_HOST }}:${{ secrets.PROXY_PORT }} http://${{ secrets.SSH_HOST }}
 
       # Настройка SSH
       - name: Configure SSH
@@ -33,4 +33,7 @@ jobs:
 
       # Выполнение скрипта на сервере
       - name: Run script on server
+        env:
+          http_proxy: http://${{ secrets.PROXY_USER }}:${{ secrets.PROXY_PASSWORD }}@${{ secrets.PROXY_HOST }}:${{ secrets.PROXY_PORT }}
+          https_proxy: http://${{ secrets.PROXY_USER }}:${{ secrets.PROXY_PASSWORD }}@${{ secrets.PROXY_HOST }}:${{ secrets.PROXY_PORT }}
         run: ssh remote-server 'bash /home/bot/vending_machines_bot/restart.sh'
