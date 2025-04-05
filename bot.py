@@ -377,7 +377,7 @@ def append_manager_info(report_text, request, photos_count):
     comments_engineers = "Комментарии:\n" + "\n".join([f"{c.text}" for c in comments if c.added_by == 'engineer']) if comments else "Комментарии отсутствуют"
     comments_accountants = "Комментарии:\n" + "\n".join([f"{c.text}" for c in comments if c.added_by == 'accountant']) if comments else "Комментарии отсутствуют"
     report_text += (
-        f"Инженер закрыл: {request.engineer_closed_by or 'Не закрыта'}\n"
+        f"\nИнженер закрыл: {request.engineer_closed_by or 'Не закрыта'}\n"
         f"Когда закрыл инженер: {format_datetime(request.engineer_closed_at) if request.engineer_closed_at else 'Не закрыта'}\n"
         f"{comments_engineers}\n"
         f"{photo_text}\n\n"
