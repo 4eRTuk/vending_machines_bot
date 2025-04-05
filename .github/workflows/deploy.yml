@@ -31,6 +31,9 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           echo "Host remote-server\n  HostName ${{ secrets.SSH_HOST }}\n  User ${{ secrets.SSH_USER }}\n  IdentityFile ~/.ssh/id_ed25519\n  StrictHostKeyChecking no" > ~/.ssh/config
 
+      - name: Add server to known_hosts
+        run: ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
       # Выполнение скрипта на сервере
       - name: Run script on server
         env:
