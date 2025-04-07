@@ -29,6 +29,7 @@ class Machine(Base):
     saturday = Column(Boolean)
     sunday = Column(Boolean)
     ip = Column(String(15))
+    engineer = Column(Integer)
 
 
 class Photo(Base):

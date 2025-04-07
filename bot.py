@@ -341,6 +341,7 @@ def format_datetime(date_time):
 
 def get_base_info(request):
     created_at = format_datetime(request.created_at)
+    district = f"Район: {request.machine.engineer}\n" if request.machine and request.machine.engineer else ""
     return (
         f"Заявка №{request.id}\n\n"
         f"Дата и время: {created_at}\n"
@@ -350,6 +351,7 @@ def get_base_info(request):
         f"Номер автомата/аппарата: {request.machine_number}\n"
         f"Модель: {request.machine.model if request.machine else ''}\n"
         f"Адрес: {request.machine.address if request.machine else ''}\n"
+        f"{district}"
         f"Наименование установки: {request.machine.name if request.machine else ''}\n"
         f"Описание неисправности: {request.issue_description}\n"
         f"Способ оплаты: {request.payment_method} {request.payment_type if request.payment_method == 'безналичные' else ''}\n"
