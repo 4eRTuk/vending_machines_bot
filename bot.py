@@ -49,7 +49,7 @@ async def start_command(message: types.Message, state: FSMContext, **kwargs):
         if request:
             await show_work_menu(message, employee.group == 'engineer', text=f"Работа с заявкой №{request.id}:")
         else:
-            await show_main_menu(message, employee.group == 'manager', text)
+            await show_main_menu(message, employee.group, text)
     else:
         await show_client_menu(message, text)
 
@@ -313,7 +313,7 @@ async def confirm_application(callback: types.CallbackQuery, state: FSMContext, 
         await callback.message.edit_reply_markup(reply_markup=None)
         await start_command(callback.message, state, text="Благодарим за заявку. Наш инженер в ближайшее время устранит неисправность, а деньги за неполученный продукт будут зачислены на указанный Вами мобильный телефон в течение двух рабочих дней.", employee=employee)
         request = get_request_by_id(request_id)
-        employees = get_employees_by_groups(['engineer', 'accountant', 'manager'])
+        employees = get_employees_by_groups(['engineer', 'manager'])
         await send_notification(bot, request, employees, callback.from_user.id)
     else:
         await start_command(callback.message, state, text="Ошибка при сохранении заявки. Пожалуйста, попробуйте позже или позвоните на горячую линию.", employee=employee)
@@ -373,17 +373,22 @@ def append_info(message_text, request):
     return message_text
 
 
-def append_manager_info(report_text, request, photos_count):
-    comments = get_comments(request.id)
+def append_engineer_info(report_text, request, comments, photos_count):
     photo_text = f"Фото от сотрудника: {photos_count} шт."
     comments_engineers = "Комментарии:\n" + "\n".join([f"{c.text}" for c in comments if c.added_by == 'engineer']) if comments else "Комментарии отсутствуют"
-    comments_accountants = "Комментарии:\n" + "\n".join([f"{c.text}" for c in comments if c.added_by == 'accountant']) if comments else "Комментарии отсутствуют"
     report_text += (
         f"\nИнженер закрыл: {request.engineer_closed_by or 'Не закрыта'}\n"
         f"Когда закрыл инженер: {format_datetime(request.engineer_closed_at) if request.engineer_closed_at else 'Не закрыта'}\n"
         f"{comments_engineers}\n"
-        f"{photo_text}\n\n"
-        f"Диспетчер закрыл: {request.accountant_closed_by or 'Не закрыта'}\n"
+        f"{photo_text}\n"
+    )
+    return report_text
+
+
+def append_accountant_info(report_text, request, comments):
+    comments_accountants = "Комментарии:\n" + "\n".join([f"{c.text}" for c in comments if c.added_by == 'accountant']) if comments else "Комментарии отсутствуют"
+    report_text += (
+        f"\nДиспетчер закрыл: {request.accountant_closed_by or 'Не закрыта'}\n"
         f"Когда закрыл диспетчер: {format_datetime(request.accountant_closed_at) if request.accountant_closed_at else 'Не закрыта'}\n"
         f"{comments_accountants}"
     )
@@ -395,7 +400,6 @@ async def send_notification(bot: Bot, request: Request, employees: list, user_id
     message_text = append_info(message_text, request)
     
     for employee in employees:
-        appendix = ""
         builder = InlineKeyboardBuilder()
         
         # Кнопки для руководства
@@ -407,7 +411,7 @@ async def send_notification(bot: Bot, request: Request, employees: list, user_id
                 )
             )
             if user_id:
-                appendix = f"\nTelegram ID пользователя: {user_id}"
+                message_text += f"\nTelegram ID пользователя: {user_id}"
         else:  # Кнопки для инженеров и диспетчеров
             button = types.InlineKeyboardButton(
                 text="Взять в работу",
@@ -419,6 +423,10 @@ async def send_notification(bot: Bot, request: Request, employees: list, user_id
                     callback_data=f"reopen:{request.id}"
                 )
             builder.row(button)
+            if employee.group == 'accountant':
+                photos = get_photos(request.id)
+                comments = get_comments(request.id)
+                message_text = append_engineer_info(message_text, request, comments, len(photos))
         
         keyboard = builder.as_markup()
         
@@ -427,14 +435,14 @@ async def send_notification(bot: Bot, request: Request, employees: list, user_id
                 await bot.send_photo(
                     chat_id=employee.telegram_id,
                     photo=request.photo,
-                    caption=message_text + appendix,
+                    caption=message_text,
                     reply_markup=keyboard,
                     parse_mode='HTML'
                 )
             else:
                 await bot.send_message(
                     chat_id=employee.telegram_id,
-                    text=message_text + appendix,
+                    text=message_text,
                     reply_markup=keyboard,
                     parse_mode='HTML'
                 )
@@ -537,7 +545,7 @@ async def cancel_request_handler(message: Message, **kwargs):
         )
     else:
         await message.answer("Ошибка при отказе от заявки!")
-    await show_main_menu(message, employee.group == 'manager')
+    await show_main_menu(message, employee.group)
 
 
 # States для сотрудников
@@ -546,14 +554,17 @@ class EmployeeStates(StatesGroup):
     waiting_for_comment = State()
 
 
-async def show_main_menu(message: types.Message, manager: bool, text: str = None):
+async def show_main_menu(message: types.Message, group: str, text: str = None):
     buttons = [
         [types.KeyboardButton(text="Открытые заявки")],
         [types.KeyboardButton(text="Закрытые заявки")]
     ]
-    if manager:
+    if group in ['manager', 'accountant']:
         buttons.extend([
-            [types.KeyboardButton(text="Скачать отчет в Excel")],
+            [types.KeyboardButton(text="Скачать отчет в Excel")]
+        ])
+    if group in ['manager']:
+        buttons.extend([
             [types.KeyboardButton(text="Создать заявку")]
         ])
 
@@ -568,7 +579,7 @@ async def show_main_menu(message: types.Message, manager: bool, text: str = None
 @dp.message(F.text == "Скачать отчет в Excel")
 async def download_report(message: Message, **kwargs):
     employee = kwargs.get('employee')
-    if not employee or employee.group not in ['manager']:
+    if not employee or employee.group not in ['accountant', 'manager']:
         await message.answer("Доступ запрещен!")
         return
         
@@ -578,7 +589,7 @@ async def download_report(message: Message, **kwargs):
     os.remove(file_path)
     
     # Возвращаем основное меню
-    await show_main_menu(message, employee.group == 'manager')
+    await show_main_menu(message, employee.group)
 
 
 # Обработчик для списка активных заявок
@@ -598,7 +609,8 @@ async def show_open_requests(message: Message, **kwargs):
             ).all()
         elif employee.group == 'accountant':
             open_requests = session.query(Request).filter(
-                Request.accountant_status == 'open'
+                Request.accountant_status == 'open',
+                Request.engineer_status == 'closed',
             ).all()
         elif employee.group == 'manager':
             open_requests = session.query(Request).filter(
@@ -843,7 +855,11 @@ async def confirm_close_handler(callback: types.CallbackQuery, **kwargs):
         )
         
         # Возвращаем основное меню
-        await show_main_menu(callback.message, employee.group == 'manager')
+        await show_main_menu(callback.message, employee.group)
+        
+        if employee.group == 'engineer':
+            employees = get_employees_by_groups(['accountant'])
+            await send_notification(bot, request, employees)
     else:
         await callback.message.answer("Ошибка при закрытии заявки!")
 
@@ -874,9 +890,11 @@ async def view_report_handler(callback: types.CallbackQuery, **kwargs):
         return
 
     photos = get_photos(request_id)
+    comments = get_comments(request_id)
     report_text = get_base_info(request)
     report_text = append_info(report_text, request)
-    report_text = append_manager_info(report_text, request, len(photos))
+    report_text = append_engineer_info(report_text, request, comments, len(photos))
+    report_text = append_accountant_info(report_text, request, comments)
 
     if request.photo:
         await callback.message.answer_photo(
