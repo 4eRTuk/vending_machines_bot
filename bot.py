@@ -313,7 +313,7 @@ async def confirm_application(callback: types.CallbackQuery, state: FSMContext, 
         await callback.message.edit_reply_markup(reply_markup=None)
         await start_command(callback.message, state, text="Благодарим за заявку. Наш инженер в ближайшее время устранит неисправность, а деньги за неполученный продукт будут зачислены на указанный Вами мобильный телефон в течение двух рабочих дней.", employee=employee)
         request = get_request_by_id(request_id)
-        employees = get_employees_by_groups(['engineer', 'manager'])
+        employees = get_employees_by_groups(['engineer', 'accountant', 'manager'])
         await send_notification(bot, request, employees, callback.from_user.id)
     else:
         await start_command(callback.message, state, text="Ошибка при сохранении заявки. Пожалуйста, попробуйте позже или позвоните на горячую линию.", employee=employee)
@@ -339,11 +339,11 @@ def format_datetime(date_time):
     return target_datetime.strftime('%d month %Y, %H:%M').lower().replace('month', month)
 
 
-def get_base_info(request):
+def get_base_info(request: Request, title_appendix: str = ""):
     created_at = format_datetime(request.created_at)
     district = f"Район: {request.machine.engineer}\n" if request.machine and request.machine.engineer else ""
     return (
-        f"Заявка №{request.id}\n\n"
+        f"Заявка №{request.id} {title_appendix}\n\n"
         f"Дата и время: {created_at}\n"
         f"ФИО клиента: {request.full_name}\n"
         f"Номер телефона: <a href='tel:{request.phone}'>{request.phone}</a>\n"
@@ -375,7 +375,7 @@ def append_info(message_text, request):
 
 def append_engineer_info(report_text, request, comments, photos_count):
     photo_text = f"Фото от сотрудника: {photos_count} шт."
-    comments_engineers = "Комментарии:\n" + "\n".join([f"{c.text}" for c in comments if c.added_by == 'engineer']) if comments else "Комментарии отсутствуют"
+    comments_engineers = "Код/комментарии:\n" + "\n".join([f"{c.text}" for c in comments if c.added_by == 'engineer']) if comments else "Коды/комментарии отсутствуют"
     report_text += (
         f"\nИнженер закрыл: {request.engineer_closed_by or 'Не закрыта'}\n"
         f"Когда закрыл инженер: {format_datetime(request.engineer_closed_at) if request.engineer_closed_at else 'Не закрыта'}\n"
@@ -386,7 +386,7 @@ def append_engineer_info(report_text, request, comments, photos_count):
 
 
 def append_accountant_info(report_text, request, comments):
-    comments_accountants = "Комментарии:\n" + "\n".join([f"{c.text}" for c in comments if c.added_by == 'accountant']) if comments else "Комментарии отсутствуют"
+    comments_accountants = "Код/комментарии:\n" + "\n".join([f"{c.text}" for c in comments if c.added_by == 'accountant']) if comments else "Коды/комментарии отсутствуют"
     report_text += (
         f"\nДиспетчер закрыл: {request.accountant_closed_by or 'Не закрыта'}\n"
         f"Когда закрыл диспетчер: {format_datetime(request.accountant_closed_at) if request.accountant_closed_at else 'Не закрыта'}\n"
@@ -395,8 +395,8 @@ def append_accountant_info(report_text, request, comments):
     return report_text
 
 
-async def send_notification(bot: Bot, request: Request, employees: list, user_id: int = None):
-    message_text = get_base_info(request)
+async def send_notification(bot: Bot, request: Request, employees: list, user_id: int = None, title_appendix: str = ""):
+    message_text = get_base_info(request, title_appendix=title_appendix)
     message_text = append_info(message_text, request)
     
     for employee in employees:
@@ -503,7 +503,7 @@ async def take_request_handler(callback: types.CallbackQuery, **kwargs):
 
 async def show_work_menu(message: types.Message, engineer: bool = False, text: str = None):
     buttons = [
-        [types.KeyboardButton(text="Добавить комментарий")]
+        [types.KeyboardButton(text="Добавить код/комментарий")]
     ]
     if engineer:
         buttons.append([types.KeyboardButton(text="Добавить фото")])
@@ -609,8 +609,7 @@ async def show_open_requests(message: Message, **kwargs):
             ).all()
         elif employee.group == 'accountant':
             open_requests = session.query(Request).filter(
-                Request.accountant_status == 'open',
-                Request.engineer_status == 'closed',
+                Request.accountant_status == 'open'
             ).all()
         elif employee.group == 'manager':
             open_requests = session.query(Request).filter(
@@ -627,7 +626,6 @@ async def show_open_requests(message: Message, **kwargs):
         for request in open_requests:
             request = get_request_by_id(request.id)
             await send_notification(bot, request, [employee])
-            
     except Exception as e:
         await message.answer("Ошибка при получении заявок")
         print(f"Error: {e}")
@@ -757,7 +755,7 @@ async def finish_adding_photos(message: Message, state: FSMContext, **kwargs):
 
 
 # Обработчик добавления комментария
-@dp.message(F.text == "Добавить комментарий")
+@dp.message(F.text == "Добавить код/комментарий")
 async def add_comment_handler(message: Message, state: FSMContext, **kwargs):
     employee = kwargs.get('employee')
     if not employee or employee.group not in ['engineer', 'accountant']:
@@ -769,7 +767,7 @@ async def add_comment_handler(message: Message, state: FSMContext, **kwargs):
         return
     
     await state.update_data(request_id=request.id, role=employee.group)
-    await message.answer("Введите ваш комментарий:", reply_markup=get_done_keyboard())
+    await message.answer("Введите ваш комментарий или код:", reply_markup=get_done_keyboard())
     await state.set_state(EmployeeStates.waiting_for_comment)
 
 
@@ -782,7 +780,7 @@ async def process_comment(message: Message, state: FSMContext, **kwargs):
         return
         
     if message.text == "Готово":
-        await message.answer("Добавление комментариев завершено.", reply_markup=None)
+        await message.answer("Добавление кодов и комментариев завершено.", reply_markup=None)
         await state.clear()
         await show_work_menu(message, employee.group == 'engineer')
         return
@@ -793,7 +791,7 @@ async def process_comment(message: Message, state: FSMContext, **kwargs):
     
     add_comment(request_id, message.text, role)
     
-    await message.answer("Комментарий успешно добавлен! Введите еще или нажмите 'Готово'.", reply_markup=get_done_keyboard())
+    await message.answer("Код/комментарий успешно добавлен! Введите еще или нажмите 'Готово'.", reply_markup=get_done_keyboard())
 
 
 # Функция для создания клавиатуры подтверждения
@@ -858,8 +856,9 @@ async def confirm_close_handler(callback: types.CallbackQuery, **kwargs):
         await show_main_menu(callback.message, employee.group)
         
         if employee.group == 'engineer':
+            request = get_request_by_id(request.id)
             employees = get_employees_by_groups(['accountant'])
-            await send_notification(bot, request, employees)
+            await send_notification(bot, request, employees, title_appendix="закрыта инженером")
     else:
         await callback.message.answer("Ошибка при закрытии заявки!")
 
