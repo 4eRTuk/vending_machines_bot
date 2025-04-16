@@ -396,10 +396,9 @@ def append_accountant_info(report_text, request, comments):
 
 
 async def send_notification(bot: Bot, request: Request, employees: list, user_id: int = None, title_appendix: str = ""):
-    message_text = get_base_info(request, title_appendix=title_appendix)
-    message_text = append_info(message_text, request)
-    
     for employee in employees:
+        message_text = get_base_info(request, title_appendix=title_appendix)
+        message_text = append_info(message_text, request)
         builder = InlineKeyboardBuilder()
         
         # Кнопки для руководства
