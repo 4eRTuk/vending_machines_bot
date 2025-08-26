@@ -93,7 +93,7 @@ async def cancel_application(message: types.Message, state: FSMContext, **kwargs
 # Обработчик ввода номера автомата
 @dp.message(ClientStates.waiting_for_machine)
 async def process_machine_number(message: types.Message, state: FSMContext):
-    machine_number = message.text.strip()
+    machine_number = message.text.strip() if message.text else ""
     
     if not machine_exists(machine_number):
         await message.answer(
@@ -777,11 +777,15 @@ async def process_comment(message: Message, state: FSMContext, **kwargs):
     if not employee:
         await callback.answer("Доступ запрещен!")
         return
-        
+
     if message.text == "Готово":
         await message.answer("Добавление кодов и комментариев завершено.", reply_markup=None)
         await state.clear()
         await show_work_menu(message, employee.group == 'engineer')
+        return
+
+    if not message.text:
+        await message.answer("Комментарий пустой, пожалуйста введите что-нибудь!", reply_markup=None)
         return
 
     data = await state.get_data()
@@ -835,6 +839,10 @@ async def confirm_close_handler(callback: types.CallbackQuery, **kwargs):
         return
 
     request = get_active_request(employee)
+    if not request:
+        await message.answer("У вас нет активных заявок!")
+        return
+
     data = {}
     if employee.group == 'engineer':
         data['engineer_status'] = 'closed'
