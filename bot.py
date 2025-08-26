@@ -9,7 +9,8 @@ from sqlalchemy import or_
 from typing import Any, Dict
 
 from config import Config
-from database import save_to_db, get_request_by_id, update_request, get_employees_by_groups, machine_exists, add_photo, add_comment, get_photos, get_comments, get_db_session, get_active_request, export_to_excel
+from database import save_to_db, get_request_by_id, update_request, get_employees_by_groups, machine_exists, add_photo, \
+    add_comment, get_photos, get_comments, get_db_session, get_active_request, export_to_excel
 from middleware import EmployeeMiddleware
 from models import Request, Employee
 
@@ -18,7 +19,6 @@ import logging
 import os
 import pytz
 import re
-
 
 logging.basicConfig(filename='errors.log', level=logging.ERROR)
 bot = Bot(token=Config.BOT_TOKEN)
@@ -74,7 +74,9 @@ async def show_client_menu(message: types.Message, text: str = None):
 # Обработчик кнопки "Создать заявку"
 @dp.message(lambda message: message.text == "Создать заявку")
 async def start_application(message: types.Message, state: FSMContext):
-    await message.answer("Введите номер автомата/аппарата:\n\nЧетырехзначный номер на прямоугольной шильде.\nПример: 0078", reply_markup=cancel_keyboard())
+    await message.answer(
+        "Введите номер автомата/аппарата:\n\nЧетырехзначный номер на прямоугольной шильде.\nПример: 0078",
+        reply_markup=cancel_keyboard())
     await state.set_state(ClientStates.waiting_for_machine)
 
 
@@ -96,7 +98,7 @@ async def cancel_application(message: types.Message, state: FSMContext, **kwargs
 @dp.message(ClientStates.waiting_for_machine)
 async def process_machine_number(message: types.Message, state: FSMContext):
     machine_number = message.text.strip() if message.text else ""
-    
+
     if not machine_exists(machine_number):
         await message.answer(
             f"🚨 Автомат/аппарат с номером {machine_number} не найден.\n"
@@ -105,7 +107,7 @@ async def process_machine_number(message: types.Message, state: FSMContext):
             reply_markup=cancel_keyboard()
         )
         return
-    
+
     await state.update_data(machine=machine_number)
     await message.answer("Приложите фотографию неисправности:", reply_markup=skip_keyboard())
     await state.set_state(ClientStates.waiting_for_photo)
@@ -129,7 +131,7 @@ async def skip_photo(message: types.Message, state: FSMContext):
 async def process_photo(message: Message, state: FSMContext):
     photo_id = message.photo[-1].file_id if message.photo else None
     await state.update_data(photo=photo_id)
-    
+
     await message.answer("Введите описание неисправности:", reply_markup=cancel_keyboard())
     await state.set_state(ClientStates.waiting_for_issue)
 
@@ -148,7 +150,7 @@ def get_payment_methods():
 @dp.message(ClientStates.waiting_for_issue)
 async def process_issue_description(message: Message, state: FSMContext):
     await state.update_data(issue_description=message.text)
-    
+
     await message.answer("Укажите способ оплаты:", reply_markup=get_payment_methods())
     await state.set_state(ClientStates.waiting_for_payment_method)
 
@@ -156,12 +158,12 @@ async def process_issue_description(message: Message, state: FSMContext):
 # Клавиатура для выбора типа безналичной оплаты
 def get_payment_type():
     return ReplyKeyboardMarkup(
-            keyboard=[
-                [types.KeyboardButton(text="QR код")],
-                [types.KeyboardButton(text="Карта")]
-            ],
-            resize_keyboard=True
-        )
+        keyboard=[
+            [types.KeyboardButton(text="QR код")],
+            [types.KeyboardButton(text="Карта")]
+        ],
+        resize_keyboard=True
+    )
 
 
 @dp.message(ClientStates.waiting_for_payment_method)
@@ -170,7 +172,7 @@ async def process_payment_method(message: Message, state: FSMContext):
     if payment_method not in ["безналичные", "наличные"]:
         await message.answer("Пожалуйста, выберите Наличные или Безналичные:", reply_markup=get_payment_methods())
         return
-    
+
     await state.update_data(payment_method=payment_method)
 
     if payment_method == "безналичные":
@@ -188,7 +190,7 @@ async def process_payment_type(message: Message, state: FSMContext):
     if payment_type not in ["qr код", "карта", "продолжить оформление"]:
         await message.answer("Пожалуйста, выберите QR код или Карта:", reply_markup=get_payment_type())
         return
-    
+
     if payment_type != "продолжить оформление":
         await state.update_data(payment_type=payment_type)
 
@@ -226,14 +228,16 @@ async def process_expense_amount(message: Message, state: FSMContext):
         await message.answer("Укажите наименование приобретаемого товара:", reply_markup=cancel_keyboard())
         await state.set_state(ClientStates.waiting_for_item_name)
     except (ValueError, TypeError):
-        await message.answer("🚨 Пожалуйста, введите корректную сумму (положительное число):", reply_markup=cancel_keyboard())
+        await message.answer("🚨 Пожалуйста, введите корректную сумму (положительное число):",
+                             reply_markup=cancel_keyboard())
 
 
 @dp.message(ClientStates.waiting_for_item_name)
 async def process_item_name(message: Message, state: FSMContext):
     await state.update_data(item_name=message.text)
     user_data = await state.get_data()
-    text = "Укажите время списания средств:\n\nМожно посмотреть в приложении банка" if user_data.get('payment_method') == "безналичные" else "Укажите время покупки:"
+    text = "Укажите время списания средств:\n\nМожно посмотреть в приложении банка" if user_data.get(
+        'payment_method') == "безналичные" else "Укажите время покупки:"
     await message.answer(text, reply_markup=cancel_keyboard())
     await state.set_state(ClientStates.waiting_for_expense_time)
 
@@ -249,7 +253,8 @@ async def process_expense_time(message: Message, state: FSMContext):
 @dp.message(ClientStates.waiting_for_full_name)
 async def process_full_name(message: types.Message, state: FSMContext):
     await state.update_data(full_name=message.text.strip())
-    await message.answer("Введите Ваш номер телефона:\n\nНачинайте с 8 или +7, пожалуйста.", reply_markup=cancel_keyboard())
+    await message.answer("Введите Ваш номер телефона:\n\nНачинайте с 8 или +7, пожалуйста.",
+                         reply_markup=cancel_keyboard())
     await state.set_state(ClientStates.waiting_for_phone)
 
 
@@ -266,16 +271,16 @@ def validate_phone_number(phone_number):
 @dp.message(ClientStates.waiting_for_phone)
 async def process_phone(message: types.Message, state: FSMContext):
     phone = message.text.strip()
-    
+
     if not validate_phone_number(phone):
         await message.answer(
             "🚨 Проверьте введенный номер — у телефонного номера неверный формат.",
             reply_markup=cancel_keyboard()
         )
         return
-    
+
     user_data = await state.update_data(phone=phone)
-    
+
     # Создаем клавиатуру подтверждения
     builder = InlineKeyboardBuilder()
     builder.add(types.InlineKeyboardButton(
@@ -286,7 +291,7 @@ async def process_phone(message: types.Message, state: FSMContext):
         text="Отменить заявку",
         callback_data="cancel_application")
     )
-    
+
     confirmation_text = (
         "Подтвердите корректность данных:\n\n"
         f"Ваше имя: {user_data['full_name']}\n"
@@ -298,7 +303,7 @@ async def process_phone(message: types.Message, state: FSMContext):
         f"Наименование товара: {user_data['item_name']}\n"
         f"Время покупки/списания средств: {user_data['expense_time']}"
     )
-    
+
     await message.answer(confirmation_text, reply_markup=builder.as_markup())
     await state.set_state(ClientStates.confirmation)
 
@@ -308,17 +313,21 @@ async def process_phone(message: types.Message, state: FSMContext):
 async def confirm_application(callback: types.CallbackQuery, state: FSMContext, **kwargs):
     user_data = await state.get_data()
     employee = kwargs.get('employee')
-    
+
     # Сохраняем данные в БД
     request_id = save_to_db(user_data)
     if request_id:
         await callback.message.edit_reply_markup(reply_markup=None)
-        await start_command(callback.message, state, text="Благодарим за заявку. Наш инженер в ближайшее время устранит неисправность, а деньги за неполученный продукт будут зачислены на указанный Вами мобильный телефон в течение двух рабочих дней.", employee=employee)
+        await start_command(callback.message, state,
+                            text="Благодарим за заявку. Наш инженер в ближайшее время устранит неисправность, а деньги за неполученный продукт будут зачислены на указанный Вами мобильный телефон в течение двух рабочих дней.",
+                            employee=employee)
         request = get_request_by_id(request_id)
         employees = get_employees_by_groups(['engineer', 'accountant', 'manager'])
         await send_notification(bot, request, employees, callback.from_user.id)
     else:
-        await start_command(callback.message, state, text="Ошибка при сохранении заявки. Пожалуйста, попробуйте позже или позвоните на горячую линию.", employee=employee)
+        await start_command(callback.message, state,
+                            text="Ошибка при сохранении заявки. Пожалуйста, попробуйте позже или позвоните на горячую линию.",
+                            employee=employee)
 
 
 # Обработчик отмены через инлайн-кнопку
@@ -377,7 +386,8 @@ def append_info(message_text, request):
 
 def append_engineer_info(report_text, request, comments, photos_count):
     photo_text = f"Фото от сотрудника: {photos_count} шт."
-    comments_engineers = "Код/комментарии:\n" + "\n".join([f"{c.text}" for c in comments if c.added_by == 'engineer']) if comments else "Коды/комментарии отсутствуют"
+    comments_engineers = "Код/комментарии:\n" + "\n".join(
+        [f"{c.text}" for c in comments if c.added_by == 'engineer']) if comments else "Коды/комментарии отсутствуют"
     report_text += (
         f"\nИнженер закрыл: {request.engineer_closed_by or 'Не закрыта'}\n"
         f"Когда закрыл инженер: {format_datetime(request.engineer_closed_at) if request.engineer_closed_at else 'Не закрыта'}\n"
@@ -388,7 +398,8 @@ def append_engineer_info(report_text, request, comments, photos_count):
 
 
 def append_accountant_info(report_text, request, comments):
-    comments_accountants = "Код/комментарии:\n" + "\n".join([f"{c.text}" for c in comments if c.added_by == 'accountant']) if comments else "Коды/комментарии отсутствуют"
+    comments_accountants = "Код/комментарии:\n" + "\n".join(
+        [f"{c.text}" for c in comments if c.added_by == 'accountant']) if comments else "Коды/комментарии отсутствуют"
     report_text += (
         f"\nДиспетчер закрыл: {request.accountant_closed_by or 'Не закрыта'}\n"
         f"Когда закрыл диспетчер: {format_datetime(request.accountant_closed_at) if request.accountant_closed_at else 'Не закрыта'}\n"
@@ -402,7 +413,7 @@ async def send_notification(bot: Bot, request: Request, employees: list, user_id
         message_text = get_base_info(request, title_appendix=title_appendix)
         message_text = append_info(message_text, request)
         builder = InlineKeyboardBuilder()
-        
+
         # Кнопки для руководства
         if employee.group == 'manager':
             builder.row(
@@ -428,9 +439,9 @@ async def send_notification(bot: Bot, request: Request, employees: list, user_id
                 photos = get_photos(request.id)
                 comments = get_comments(request.id)
                 message_text = append_engineer_info(message_text, request, comments, len(photos))
-        
+
         keyboard = builder.as_markup()
-        
+
         try:
             if request.photo:
                 await bot.send_photo(
@@ -459,43 +470,43 @@ async def take_request_handler(callback: types.CallbackQuery, **kwargs):
     if not employee:
         await callback.answer("Доступ запрещен!")
         return
-        
+
     if get_active_request(employee):
         await callback.answer("У вас уже есть заявка в работе!")
         return
-        
+
     request_id = int(callback.data.split(":")[1])
     request = get_request_by_id(request_id)
-    
+
     data = {}
     if employee.group == 'engineer':
         # Проверки
         if request.engineer_status == 'closed':
             await callback.answer("Заявка уже закрыта!")
             return
-            
+
         if request.engineer_status == 'in_work':
             await callback.answer("Заявка уже обрабатывается!")
             return
-        
+
         # Назначаем заявку
         data['engineer_id'] = employee.id
         data['engineer_status'] = 'in_work'
-    
+
     if employee.group == 'accountant':
         # Проверки
         if request.accountant_status == 'closed':
             await callback.answer("Заявка уже закрыта!")
             return
-        
+
         if request.accountant_status == 'in_work':
             await callback.answer("Заявка уже обрабатывается!")
             return
-        
+
         # Назначаем заявку
         data['accountant_id'] = employee.id
         data['accountant_status'] = 'in_work'
-        
+
     if update_request(request_id, **data):
         # Обновляем меню сотрудника
         await show_work_menu(callback.message, employee.group == 'engineer', text=f"Работа с заявкой №{request.id}:")
@@ -539,7 +550,7 @@ async def cancel_request_handler(message: Message, **kwargs):
     if employee.group == 'accountant':
         data['accountant_id'] = None
         data['accountant_status'] = 'open'
-    
+
     if update_request(request.id, **data):
         await message.answer(
             "Вы отказались от заявки!",
@@ -584,12 +595,12 @@ async def download_report(message: Message, **kwargs):
     if not employee or employee.group not in ['accountant', 'manager']:
         await message.answer("Доступ запрещен!")
         return
-        
+
     file_path = export_to_excel()
     file = FSInputFile(file_path)
     await bot.send_document(message.from_user.id, file, caption="Ваш отчет готов!")
     os.remove(file_path)
-    
+
     # Возвращаем основное меню
     await show_main_menu(message, employee.group)
 
@@ -620,11 +631,11 @@ async def show_open_requests(message: Message, **kwargs):
                     Request.engineer_status != 'closed'
                 )
             ).all()
-        
+
         if not open_requests:
             await message.answer("Нет открытых заявок")
             return
-            
+
         for request in open_requests:
             request = get_request_by_id(request.id)
             await send_notification(bot, request, [employee])
@@ -684,15 +695,15 @@ async def reopen_request_handler(callback: types.CallbackQuery, **kwargs):
     if not employee or employee.group not in ['engineer', 'accountant']:
         await callback.answer("Доступ запрещен!")
         return
-    
+
     request = get_active_request(employee)
     if request:
         await callback.answer("У вас уже есть заявка в работе!")
         return
-    
+
     request_id = callback.data.split(":")[1]
     request = get_request_by_id(request_id)
-    
+
     data = {}
     if employee.group == 'engineer' and request.engineer_id == employee.id:
         data['engineer_status'] = 'in_work'
@@ -701,7 +712,7 @@ async def reopen_request_handler(callback: types.CallbackQuery, **kwargs):
     else:
         await callback.answer("Вы не можете переоткрыть эту заявку!")
         return
-    
+
     if update_request(request.id, **data):
         # Возвращаем основное меню
         await show_work_menu(callback.message, employee.group == 'engineer', text=f"Заявка №{request.id} переоткрыта:")
@@ -728,7 +739,7 @@ async def add_photo_handler(message: Message, state: FSMContext, **kwargs):
     if not request:
         await message.answer("У вас нет активных заявок!")
         return
-    
+
     await state.update_data(request_id=request.id)
     await message.answer("Отправьте фото:", reply_markup=get_done_keyboard())
     await state.set_state(EmployeeStates.waiting_for_photo)
@@ -740,10 +751,11 @@ async def process_photo(message: Message, state: FSMContext):
     data = await state.get_data()
     request_id = data['request_id']
     photo_id = message.photo[-1].file_id
-    
+
     add_photo(request_id, photo_id)
-    
-    await message.answer("Фото успешно добавлено! Отправьте еще или нажмите 'Готово'.", reply_markup=get_done_keyboard())
+
+    await message.answer("Фото успешно добавлено! Отправьте еще или нажмите 'Готово'.",
+                         reply_markup=get_done_keyboard())
 
 
 @dp.message(EmployeeStates.waiting_for_photo, F.text == "Готово")
@@ -752,7 +764,7 @@ async def finish_adding_photos(message: Message, state: FSMContext, **kwargs):
     if not employee:
         await callback.answer("Доступ запрещен!")
         return
-        
+
     await message.answer("Добавление фото завершено.", reply_markup=None)
     await state.clear()
     await show_work_menu(message, employee.group == 'engineer')
@@ -769,7 +781,7 @@ async def add_comment_handler(message: Message, state: FSMContext, **kwargs):
     if not request:
         await message.answer("У вас нет активных заявок!")
         return
-    
+
     await state.update_data(request_id=request.id, role=employee.group)
     await message.answer("Введите ваш комментарий или код:", reply_markup=get_done_keyboard())
     await state.set_state(EmployeeStates.waiting_for_comment)
@@ -796,10 +808,11 @@ async def process_comment(message: Message, state: FSMContext, **kwargs):
     data = await state.get_data()
     request_id = data['request_id']
     role = data['role']
-    
+
     add_comment(request_id, message.text, role)
-    
-    await message.answer("Код/комментарий успешно добавлен! Введите еще или нажмите 'Готово'.", reply_markup=get_done_keyboard())
+
+    await message.answer("Код/комментарий успешно добавлен! Введите еще или нажмите 'Готово'.",
+                         reply_markup=get_done_keyboard())
 
 
 # Функция для создания клавиатуры подтверждения
@@ -821,12 +834,12 @@ async def close_request_handler(message: Message, **kwargs):
     if not employee or employee.group not in ['engineer', 'accountant']:
         await message.answer("Доступ запрещен!")
         return
-    
+
     request = get_active_request(employee)
     if not request:
         await message.answer("У вас нет активных заявок!")
         return
-        
+
     # Отправляем сообщение с подтверждением
     await message.answer(
         f"Подтвердите закрытие заявки №{request.id}\n\nНомер автомата/аппарата: {request.machine_number}\nАдрес: {request.machine.address}",
@@ -857,16 +870,16 @@ async def confirm_close_handler(callback: types.CallbackQuery, **kwargs):
         data['accountant_status'] = 'closed'
         data['accountant_closed_at'] = datetime.now()
         data['accountant_closed_by'] = employee.full_name
-        
+
     if update_request(request.id, **data):
         await callback.message.answer(
             "Заявка успешно закрыта!",
             reply_markup=types.ReplyKeyboardRemove()
         )
-        
+
         # Возвращаем основное меню
         await show_main_menu(callback.message, employee.group)
-        
+
         if employee.group == 'engineer':
             request = get_request_by_id(request.id)
             employees = get_employees_by_groups(['accountant'])
@@ -895,7 +908,7 @@ async def view_report_handler(callback: types.CallbackQuery, **kwargs):
 
     request_id = int(callback.data.split(":")[1])
     request = get_request_by_id(request_id)
-    
+
     if not request:
         await callback.message.answer("Заявка не найдена")
         return
@@ -915,11 +928,11 @@ async def view_report_handler(callback: types.CallbackQuery, **kwargs):
         )
     else:
         await callback.message.answer(report_text, parse_mode='HTML')
-    
+
     if photos:
         media = [types.InputMediaPhoto(media=photo.file_id) for photo in photos[:10]]  # Ограничим 10 фото
         await callback.message.answer_media_group(media)
-    
+
 
 dp.message.middleware(EmployeeMiddleware())
 dp.callback_query.middleware(EmployeeMiddleware())
@@ -932,5 +945,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
