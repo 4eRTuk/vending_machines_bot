@@ -14,11 +14,13 @@ from middleware import EmployeeMiddleware
 from models import Request, Employee
 
 import asyncio
+import logging
 import os
 import pytz
 import re
 
 
+logging.basicConfig(filename='errors.log', level=logging.ERROR)
 bot = Bot(token=Config.BOT_TOKEN)
 dp = Dispatcher()
 
@@ -446,6 +448,7 @@ async def send_notification(bot: Bot, request: Request, employees: list, user_id
                     parse_mode='HTML'
                 )
         except Exception as e:
+            logging.exception(f"Error sending notification: {e}")
             print(f"Error sending notification: {e}")
 
 
@@ -627,7 +630,8 @@ async def show_open_requests(message: Message, **kwargs):
             await send_notification(bot, request, [employee])
     except Exception as e:
         await message.answer("Ошибка при получении заявок")
-        print(f"Error: {e}")
+        logging.exception(f"Error getting requests: {e}")
+        print(f"Error getting requests: {e}")
     finally:
         session.close()
 
@@ -667,7 +671,8 @@ async def show_closed_requests(message: Message, **kwargs):
             await send_notification(bot, request, [employee])
     except Exception as e:
         await message.answer("Ошибка при получении заявок")
-        print(f"Error: {e}")
+        logging.exception(f"Error getting requests: {e}")
+        print(f"Error getting requests: {e}")
     finally:
         session.close()
 
