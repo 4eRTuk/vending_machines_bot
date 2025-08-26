@@ -373,13 +373,15 @@ def get_base_info(request: Request, title_appendix: str = ""):
 
 
 def append_info(message_text, request):
-    if request.machine.priority != None:
+    if not request.machine:
+        return message_text
+    if request.machine.priority is not None:
         message_text += f"Приоритет: {request.machine.priority}\n"
-    if request.machine.pump != None:
+    if request.machine.pump is not None:
         message_text += f"Помпа: {'есть' if request.machine.pump else 'нет'}\n"
-    if request.machine.saturday != None or request.machine.sunday != None:
+    if request.machine.saturday is not None or request.machine.sunday is not None:
         message_text += f"Выходные сб/вс: {'да' if request.machine.saturday else 'нет'}/{'да' if request.machine.sunday else 'нет'}\n"
-    if request.machine.ip != None:
+    if request.machine.ip is not None:
         message_text += f"ИП: {request.machine.ip}\n"
     return message_text
 
